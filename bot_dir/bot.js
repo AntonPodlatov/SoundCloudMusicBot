@@ -18,24 +18,16 @@ searchScene.on("text", async (ctx) => {
     return await scrapper.search(ctx);
 });
 
-
 const loadScene = new Composer();
-loadScene.on("callback_query", async (ctx) => {
-    await scrapper.download(ctx);
-});
+loadScene.on("callback_query", async (ctx) => await scrapper.download(ctx));
 
 const searchAndLoadScene = new Scenes.WizardScene("sceneWizard", startWizard, searchScene, loadScene);
 const stage = new Scenes.Stage([searchAndLoadScene]);
 bot.use(session());
 bot.use(stage.middleware());
 
-bot.command("search", async ctx => {
-    await ctx.scene.enter("sceneWizard", {map: new Map()});
-});
-
-bot.start((ctx) => {
-    ctx.reply("Here you can download music from soundcloud.\n\n Use the /search command.");
-});
+bot.command("search", async ctx => await ctx.scene.enter("sceneWizard", {map: new Map()}));
+bot.start((ctx) => ctx.reply("Here you can download music from soundcloud.\n\n Use the /search command."));
 bot.on("text", ctx => ctx.reply("Use the /search command"));
 
 bot.launch();
