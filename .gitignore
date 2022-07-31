@@ -1,0 +1,5 @@
+# Project exclude paths
+/bot_dir/node_modules/
+.idea
+/bot_dir/node_modules
+/bot_dir/.env
