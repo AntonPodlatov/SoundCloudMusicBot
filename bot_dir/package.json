@@ -12,6 +12,7 @@
     "@hack0x90/soundcloud-dl": "^1.0.5",
     "axios": "^0.27.2",
     "dotenv": "^16.0.1",
+    "node": "^18.7.0",
     "node-html-parser": "^5.3.3",
     "nodemon": "^2.0.19",
     "soundcloud-scraper": "^5.0.3",
