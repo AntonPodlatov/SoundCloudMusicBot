@@ -5,4 +5,6 @@ A simple telegram bot made using telegraf.js and soundcloud-scraper. The bot all
 ###### npm install
 create a .env file in bor_dir and put the token on it
 
+create "songs" directory in bot_dir
+
 node bot - start bot
