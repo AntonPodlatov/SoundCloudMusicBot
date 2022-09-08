@@ -1,5 +1,3 @@
-const axios = require("axios");
-
 module.exports = {
     parseDuration: function parseDuration(duration) {
         const secondsCount = duration / 1000;

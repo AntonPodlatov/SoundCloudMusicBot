@@ -1,11 +1,13 @@
 const axios = require("axios");
 const sckey = require('soundcloud-key-fetch');
 let key;
-sckey.fetchKey().then(k => {key = k;});
+sckey.fetchKey().then(k => {
+    key = k;
+});
 
 module.exports = class Service {
     constructor() {
-           this.key = key;
+        this.key = key;
     }
 
     async searchTracks(query, limit = 10) {
@@ -13,5 +15,9 @@ module.exports = class Service {
             `${encodeURIComponent(query)}` +
             `&client_id=${key}` +
             `&limit=${limit}`);
+    }
+
+    async next(url) {
+        return axios.get(`${url}&client_id=${key}`);
     }
 }
