@@ -7,8 +7,8 @@ const {parseDuration} = require("./utils");
 const {Markup} = require("telegraf");
 const SoundCloud = require("soundcloud-scraper");
 const {isNull} = require("util");
-const Url = require("url");
 const client = new SoundCloud.Client();
+const fs = require("fs");
 
 
 const startWizard = new Composer();
@@ -30,28 +30,39 @@ loadScene.on("callback_query", async (ctx) => {
     const mapKey = ctx.update.callback_query.data;
     const mapValue = ctx.wizard.state.data.get(mapKey);
 
-    if (mapKey === "next") {
-        if (mapValue === undefined) {
-            return await ctx.answerCbQuery("this is last page");
+    if (mapKey === "next" || mapKey === "prev") {
+        if (typeof mapValue === "undefined") {
+            return await ctx.answerCbQuery("Last page!");
         }
-        const markupArray = await formKeyboardUpdated(mapValue, ctx);
-        return await editKeyboard(ctx, markupArray);
-    }
-
-    if (mapKey === "prev") {
         if (isNull(mapValue)) {
-            return await ctx.answerCbQuery("this is first page");
+            return await ctx.answerCbQuery("First page!");
         }
-        const markupArray = await formKeyboardUpdated(mapValue, ctx);
-        return await editKeyboard(ctx, markupArray);
+
+        const update = await formUpdatedKeyboard(mapValue, ctx);
+        await ctx.editMessageText(update.msg);
+        await editKeyboard(ctx, update.arr);
+        return;
     }
 
-    await ctx.answerCbQuery("preparing the file for transfer, it will take a few seconds..");
-    await client
-        .getSongInfo(mapValue)
-        .then(async song => {
-            ctx.reply(song.title);
+    await ctx.answerCbQuery("preparing the file...");
+    await client.getSongInfo(mapValue).then(async song => {
+        const title = song.title.replace(/\//g, '\u2215');
+        const msg = await ctx.reply("wait about 7 seconds..");
+        const stream = await song.downloadHLS();
+        const writer = stream.pipe(fs.createWriteStream(`./audio/${title}.mp3`));
+
+        writer.on("finish", async () => {
+            try {
+                ctx.deleteMessage(msg.message_id);
+                await ctx.replyWithAudio({source: `./audio/${title}.mp3`});
+                await fs.unlink(`./audio/${title}.mp3`,
+                    err => err ? console.log(err) : console.log("removed"));
+            } catch (e) {
+                console.log(e);
+            }
         });
+    })
+        .catch(console.error);
 });
 
 const searchAndLoadScene = new Scenes.WizardScene("sceneWizard", startWizard, searchScene, loadScene);
@@ -82,7 +93,8 @@ async function editKeyboard(ctx, markupArray) {
 
 async function formKeyboardAndReply(ctx) {
     const query = ctx.update.message.text;
-    let soundsButtonsArray = [];
+    let soundsButtonsArray = [[], []];
+    let soundsList = "";
 
     return await service.searchTracks(query).then(r => {
         if (r.data.collection.length === 0) {
@@ -92,72 +104,80 @@ async function formKeyboardAndReply(ctx) {
 
         let i = 0;
         r.data.collection.forEach(sound => {
+            const numberRepresented = i + 1;
+            soundsList += `${numberRepresented}) ${sound.title} ${parseDuration(sound.full_duration)}\n ${sound.user.permalink}\n\n`
             const key = "song-" + i;
             ctx.wizard.state.data.set(key, sound.permalink_url);
-            soundsButtonsArray
-                .push([Markup.button
-                    .callback(`${sound.user.permalink}  ${sound.title} ${parseDuration(sound.full_duration)}`, key)]);
+
+            if (i < 5) {
+                soundsButtonsArray[0].push(Markup.button.callback(String(numberRepresented), key));
+            } else {
+                soundsButtonsArray[1].push(Markup.button.callback(String(numberRepresented), key));
+            }
             i++;
         });
 
-        const resultsCount = r.data.total_results;
-        const pagesCount = Math.ceil(resultsCount / 10);
         soundsButtonsArray.push([
             Markup.button.callback("prev", "prev"),
             Markup.button.callback("next", "next")]);
         ctx.wizard.state.data.set("prev", null);
         ctx.wizard.state.data.set("next", r.data.next_href);
 
-        ctx.reply(`Results: ${resultsCount} | pages: ${pagesCount}`, Markup.inlineKeyboard(soundsButtonsArray));
+        const resultsCount = r.data.total_results;
+        ctx.reply(`1-10 from ${resultsCount}\n\n` + soundsList, Markup.inlineKeyboard(soundsButtonsArray));
         return ctx.wizard.next();
-    }).catch();
+    }).catch(e => {
+        console.log(e)
+    });
 }
 
-async function formKeyboardUpdated(url, ctx) {
-    let soundsButtonsArray = [];
-    await service.next(url).then(r => {
+async function formUpdatedKeyboard(url, ctx) {
+    let soundsButtonsArray = [[], []];
+    let soundsList = "";
+
+    return await service.get(url).then(r => {
         let i = 0;
         r.data.collection.forEach(sound => {
+            const numberRepresented = i + 1;
+            soundsList += `${numberRepresented}) ${sound.title} ${parseDuration(sound.full_duration)}\n ${sound.user.permalink}\n\n`
             const key = "song-" + i;
             ctx.wizard.state.data.set(key, sound.permalink_url);
-            soundsButtonsArray.push([Markup.button
-                .callback(`${sound.user.permalink}  ${sound.title} ${parseDuration(sound.full_duration)}`, key)]);
+
+            if (i < 5) {
+                soundsButtonsArray[0]
+                    .push(Markup.button.callback(String(numberRepresented), key));
+            } else {
+                soundsButtonsArray[1]
+                    .push(Markup.button.callback(String(numberRepresented), key));
+            }
             i++;
         });
+
+        const thisUrl = new URL(url);
+        const offset = thisUrl.searchParams.get("offset");
+        let backOffset = offset - 10;
+
+        if (backOffset < 0) {
+            ctx.wizard.state.data.set("prev", null);
+            ctx.wizard.state.data.set("next", r.data.next_href);
+        } else {
+            thisUrl.searchParams.set("offset", String(Number(offset) - 10));
+
+            ctx.wizard.state.data.set("prev", thisUrl);
+            ctx.wizard.state.data.set("next", r.data.next_href);
+        }
+
         soundsButtonsArray.push([
             Markup.button.callback("prev", "prev"),
             Markup.button.callback("next", "next")]);
 
-
-        if (typeof r.data.next_href !== "undefined") {
-            const nextUrl = new URL(r.data.next_href);
-            const offset = nextUrl.searchParams.get("offset");
-            let leftOffset = Number(offset) - 10;
-
-            if (leftOffset < 0) {
-                url = null;
-            } else {
-                nextUrl.searchParams.set("offset", String(leftOffset));
-                url = nextUrl.toString();
-            }
-
-            ctx.wizard.state.data.set("prev", url);
-            ctx.wizard.state.data.set("next", r.data.next_href);
-        } else {
-            const nextUrl = new URL(url);
-            const offset = nextUrl.searchParams.get("offset");
-            let leftOffset = Number(offset) - 10;
-
-            if (leftOffset < 0) {
-                url = null;
-            } else {
-                nextUrl.searchParams.set("offset", String(leftOffset));
-                url = nextUrl.toString();
-            }
-
-            ctx.wizard.state.data.set("prev", url);
-            ctx.wizard.state.data.set("next", undefined);
+        let to = Number(offset) + 10;
+        const resultsCount = r.data.total_results;
+        if (resultsCount < to) {
+            to = resultsCount;
         }
+
+        soundsList = `${offset}-${to} in ${resultsCount}\n\n` + soundsList;
+        return {arr: soundsButtonsArray, msg: soundsList};
     }).catch();
-    return soundsButtonsArray;
 }

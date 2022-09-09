@@ -17,7 +17,7 @@ module.exports = class Service {
             `&limit=${limit}`);
     }
 
-    async next(url) {
-        return axios.get(`${url}&client_id=${key}`);
+    async get(url, offset, limit = 10) {
+        return axios.get(`${url}&client_id=${key}`, {params: {limit: limit, offset: offset}});
     }
 }
