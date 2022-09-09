@@ -9,7 +9,6 @@ const SoundCloud = require("soundcloud-scraper");
 const {isNull} = require("util");
 const Url = require("url");
 const client = new SoundCloud.Client();
-const url = require ('node:url');
 
 
 const startWizard = new Composer();
@@ -29,29 +28,30 @@ searchScene.on("text", async (ctx) => {
 const loadScene = new Composer();
 loadScene.on("callback_query", async (ctx) => {
     const mapKey = ctx.update.callback_query.data;
-    const url = ctx.wizard.state.data.get(mapKey);
+    const mapValue = ctx.wizard.state.data.get(mapKey);
 
     if (mapKey === "next") {
-        if (url === undefined) {
+        if (mapValue === undefined) {
             return await ctx.answerCbQuery("this is last page");
         }
-        const markupArray = await formKeyboardUpdated(url, ctx);
-        console.log(url);
-        await editKeyboard(ctx, markupArray);
-        return;
+        const markupArray = await formKeyboardUpdated(mapValue, ctx);
+        return await editKeyboard(ctx, markupArray);
     }
 
     if (mapKey === "prev") {
-        if (isNull(url)) {
+        if (isNull(mapValue)) {
             return await ctx.answerCbQuery("this is first page");
         }
-        const markupArray = await formKeyboardUpdated(url, ctx);
-        console.log(url);
-        // await editKeyboard(ctx, markupArray);
+        const markupArray = await formKeyboardUpdated(mapValue, ctx);
+        return await editKeyboard(ctx, markupArray);
     }
 
-    // await ctx.answerCbQuery("preparing the file for transfer, it will take a few seconds..");
-    //  await client.getSongInfo(ctx.wizard.state.data.get(mapKey)).then(async song => {ctx.reply(song.title);console.log(song.title);});
+    await ctx.answerCbQuery("preparing the file for transfer, it will take a few seconds..");
+    await client
+        .getSongInfo(mapValue)
+        .then(async song => {
+            ctx.reply(song.title);
+        });
 });
 
 const searchAndLoadScene = new Scenes.WizardScene("sceneWizard", startWizard, searchScene, loadScene);
@@ -124,17 +124,40 @@ async function formKeyboardUpdated(url, ctx) {
                 .callback(`${sound.user.permalink}  ${sound.title} ${parseDuration(sound.full_duration)}`, key)]);
             i++;
         });
-
         soundsButtonsArray.push([
             Markup.button.callback("prev", "prev"),
             Markup.button.callback("next", "next")]);
 
-        const nextUrl = new URL(url);
-        console.log(nextUrl.searchParams.get("offset"));
-        //console.log(nextUrl);
 
-        ctx.wizard.state.data.set("prev", url);
-        ctx.wizard.state.data.set("next", r.data.next_href);
+        if (typeof r.data.next_href !== "undefined") {
+            const nextUrl = new URL(r.data.next_href);
+            const offset = nextUrl.searchParams.get("offset");
+            let leftOffset = Number(offset) - 10;
+
+            if (leftOffset < 0) {
+                url = null;
+            } else {
+                nextUrl.searchParams.set("offset", String(leftOffset));
+                url = nextUrl.toString();
+            }
+
+            ctx.wizard.state.data.set("prev", url);
+            ctx.wizard.state.data.set("next", r.data.next_href);
+        } else {
+            const nextUrl = new URL(url);
+            const offset = nextUrl.searchParams.get("offset");
+            let leftOffset = Number(offset) - 10;
+
+            if (leftOffset < 0) {
+                url = null;
+            } else {
+                nextUrl.searchParams.set("offset", String(leftOffset));
+                url = nextUrl.toString();
+            }
+
+            ctx.wizard.state.data.set("prev", url);
+            ctx.wizard.state.data.set("next", undefined);
+        }
     }).catch();
     return soundsButtonsArray;
 }
